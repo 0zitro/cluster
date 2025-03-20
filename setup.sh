@@ -7,20 +7,20 @@ CERTMANAGER_VERSION="1.17.1"
 
 # General repo utils
 apt-get update
-apt-get -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" dist-upgrade
+apt-get -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" -y dist-upgrade
 # apt-transport-https may be a dummy package; if so, you can skip that package
 apt-get install -y apt-transport-https ca-certificates curl gpg
 
 # Keyrings:
 # If the directory `/etc/apt/keyrings` does not exist, it should be created before the curl command, read the note below.
-sudo mkdir -p -m 755 /etc/apt/keyrings
+mkdir -p -m 755 /etc/apt/keyrings
 
 #  - Docker:
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
 #  - Kubernetes:
 curl -fsSL https://pkgs.k8s.io/core:/stable:/v${K8S_VERSION}/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring_v${K8S_VERSION}.gpg
 #  - Helm:
-curl https://baltocdn.com/helm/signing.asc | gpg --dearmor -o /usr/share/keyrings/helm.gpg
+curl https://baltocdn.com/helm/signing.asc | gpg --dearmor -o /etc/apt/keyrings/helm.gpg
 # Visibility:
 chmod -R a+r /etc/apt/keyrings
 
@@ -35,7 +35,7 @@ echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring_v${K8S_VERSION}.gp
 echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/helm.gpg] https://baltocdn.com/helm/stable/debian/ all main" > /etc/apt/sources.list.d/helm-stable-debian.list
 
 # use systemd for the management of the container’s cgroups
-mkdir /etc/docker
+mkdir -p /etc/docker
 cat <<EOF | sudo tee /etc/docker/daemon.json
 {
   "exec-opts": ["native.cgroupdriver=systemd"],
@@ -48,9 +48,14 @@ cat <<EOF | sudo tee /etc/docker/daemon.json
 EOF
 
 # install tools
-apt-get update
-apt install docker-ce kubeadm kubelet kubernetes-cni helm -y
+apt-get -y update
+apt install -y docker-ce kubeadm kubelet kubernetes-cni helm
 apt-mark hold kubelet kubeadm kubectl
+
+containerd config default | sed -E 's/SystemdCgroup = false/SystemdCgroup = true/; s%sandbox_image = ".*"%sandbox_image = "registry.k8s.io/pause:3.10"%' > /etc/containerd/config.toml
+systemctl restart containerd
+systemctl enable kubelet
+systemctl restart kubelet
 
 # start cluster
 kubeadm init --pod-network-cidr=10.244.0.0/16 --apiserver-advertise-address=$VPS_IP
