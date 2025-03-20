@@ -23,9 +23,9 @@ mkdir -p -m 755 /etc/apt/keyrings
 #  - Docker:
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
 #  - Kubernetes:
-curl -fsSL https://pkgs.k8s.io/core:/stable:/v${K8S_VERSION}/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring_v${K8S_VERSION}.gpg
+curl -fsSL https://pkgs.k8s.io/core:/stable:/v${K8S_VERSION}/deb/Release.key | gpg --dearmor --yes -o /etc/apt/keyrings/kubernetes-apt-keyring_v${K8S_VERSION}.gpg
 #  - Helm:
-curl https://baltocdn.com/helm/signing.asc | gpg --dearmor -o /etc/apt/keyrings/helm.gpg
+curl https://baltocdn.com/helm/signing.asc | gpg --dearmor --yes -o /etc/apt/keyrings/helm.gpg
 # Visibility:
 chmod -R a+r /etc/apt/keyrings
 
