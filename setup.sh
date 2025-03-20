@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-VPS_IP=$(curl -4 ifconfig.co)
+VPS_IP=$(curl -4 ifconfig.me)
 K8S_VERSION="1.31"
 CILIUM_VERSION="1.17.2"
 CERTMANAGER_VERSION="1.17.1"
