@@ -54,7 +54,7 @@ EOF
 
 # install tools
 apt-get -y update
-apt install -y docker-ce kubeadm kubectl kubelet kubernetes-cni helm
+apt install -y --allow-change-held-packages docker-ce kubeadm kubectl kubelet kubernetes-cni helm
 apt-mark hold kubelet kubeadm kubectl
 
 kubeadm reset -f
