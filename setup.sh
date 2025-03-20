@@ -1,22 +1,38 @@
-#!/bin/sh
+#!/usr/bin/env bash
 
 VPS_IP=$(curl -4 ifconfig.co)
+K8S_VERSION="1.31"
+CILIUM_VERSION="1.17.2"
+CERTMANAGER_VERSION="1.17.1"
 
-# update the system
+# General repo utils
 apt-get update
 apt-get -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" dist-upgrade
+# apt-transport-https may be a dummy package; if so, you can skip that package
+apt-get install -y apt-transport-https ca-certificates curl gpg
 
-# add Docker repository
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add -
-add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+# Keyrings:
+# If the directory `/etc/apt/keyrings` does not exist, it should be created before the curl command, read the note below.
+sudo mkdir -p -m 755 /etc/apt/keyrings
 
-# add Kubernetes repository
-curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -
-echo "deb http://apt.kubernetes.io/ kubernetes-xenial main" | tee -a /etc/apt/sources.list.d/kubernetes.list
+#  - Docker:
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+#  - Kubernetes:
+curl -fsSL https://pkgs.k8s.io/core:/stable:/v${K8S_VERSION}/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring_v${K8S_VERSION}.gpg
+#  - Helm:
+curl https://baltocdn.com/helm/signing.asc | gpg --dearmor -o /usr/share/keyrings/helm.gpg
+# Visibility:
+chmod -R a+r /etc/apt/keyrings
 
-# add Helm repository
-curl https://baltocdn.com/helm/signing.asc | apt-key add -
-echo "deb https://baltocdn.com/helm/stable/debian/ all main" | tee /etc/apt/sources.list.d/helm-stable-debian.list
+# Repos:
+#  - Docker:
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
+  $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}") stable" > /etc/apt/sources.list.d/docker.list
+#  - Kubernetes:
+echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring_v${K8S_VERSION}.gpg] https://pkgs.k8s.io/core:/stable:/v${K8S_VERSION}/deb/ /" > /etc/apt/sources.list.d/kubernetes.list
+#  - Helm:
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/helm.gpg] https://baltocdn.com/helm/stable/debian/ all main" > /etc/apt/sources.list.d/helm-stable-debian.list
 
 # use systemd for the management of the container’s cgroups
 mkdir /etc/docker
@@ -34,6 +50,7 @@ EOF
 # install tools
 apt-get update
 apt install docker-ce kubeadm kubelet kubernetes-cni helm -y
+apt-mark hold kubelet kubeadm kubectl
 
 # start cluster
 kubeadm init --pod-network-cidr=10.244.0.0/16 --apiserver-advertise-address=$VPS_IP
@@ -45,7 +62,7 @@ chown $(id -u):$(id -g) $HOME/.kube/config
 
 # install networking model
 helm repo add cilium https://helm.cilium.io/
-helm install cilium cilium/cilium --version 1.10.4 --namespace kube-system
+helm install cilium cilium/cilium --version ${CILIUM_VERSION} --namespace kube-system
 
 # allow master to run pods
 kubectl taint nodes --all node-role.kubernetes.io/master-
@@ -53,7 +70,7 @@ kubectl taint nodes --all node-role.kubernetes.io/master-
 # install ingress
 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
 helm install ingress-nginx ingress-nginx/ingress-nginx
-kubectl patch svc ingress-nginx-controller -p "{\"spec\": {\"type\": \"LoadBalancer\", \"externalIPs\":[\"$VPS_IP\"]}}"
+kubectl patch svc ingress-nginx-controller -p "{\"spec\": {\"type\": \"LoadBalancer\", \"externalIPs\":[\"${VPS_IP}\"]}}"
 
 # install certificate manager
 helm repo add jetstack https://charts.jetstack.io
@@ -62,5 +79,5 @@ helm install \
   cert-manager jetstack/cert-manager \
   --namespace cert-manager \
   --create-namespace \
-  --version v1.5.3 \
+  --version v${CERTMANAGER_VERSION} \
   --set installCRDs=true
