@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
 
 VPS_IP=$(curl -4 ifconfig.me)
-K8S_VERSION="1.31"
+K8S_VERSION="1.32"
 CILIUM_VERSION="1.17.2"
 CERTMANAGER_VERSION="1.17.1"
+
+# sysctl params required by setup, params persist across reboots
+echo "net.ipv4.ip_forward = 1" > /etc/sysctl.d/30-ip-forwarding.conf
+# Apply sysctl params without reboot
+sysctl --system
 
 # General repo utils
 apt-get update
@@ -49,9 +54,10 @@ EOF
 
 # install tools
 apt-get -y update
-apt install -y docker-ce kubeadm kubelet kubernetes-cni helm
+apt install -y docker-ce kubeadm kubectl kubelet kubernetes-cni helm
 apt-mark hold kubelet kubeadm kubectl
 
+kubeadm reset -f
 containerd config default | sed -E 's/SystemdCgroup = false/SystemdCgroup = true/; s%sandbox_image = ".*"%sandbox_image = "registry.k8s.io/pause:3.10"%' > /etc/containerd/config.toml
 systemctl restart containerd
 systemctl enable kubelet
@@ -70,7 +76,7 @@ helm repo add cilium https://helm.cilium.io/
 helm install cilium cilium/cilium --version ${CILIUM_VERSION} --namespace kube-system
 
 # allow master to run pods
-kubectl taint nodes --all node-role.kubernetes.io/master-
+kubectl taint nodes --all "node-role.kubernetes.io/control-plane:NoSchedule-"
 
 # install ingress
 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
