@@ -37,7 +37,7 @@ echo \
 #  - Kubernetes:
 echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring_v${K8S_VERSION}.gpg] https://pkgs.k8s.io/core:/stable:/v${K8S_VERSION}/deb/ /" > /etc/apt/sources.list.d/kubernetes.list
 #  - Helm:
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/helm.gpg] https://baltocdn.com/helm/stable/debian/ all main" > /etc/apt/sources.list.d/helm-stable-debian.list
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/share/keyrings/helm.gpg] https://baltocdn.com/helm/stable/debian/ all main" > /etc/apt/sources.list.d/helm-stable-debian.list
 
 # use systemd for the management of the container’s cgroups
 mkdir -p /etc/docker
