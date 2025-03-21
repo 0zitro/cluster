@@ -57,14 +57,23 @@ apt-get -y update
 apt install -y --allow-change-held-packages docker-ce kubeadm kubectl kubelet kubernetes-cni helm
 apt-mark hold kubelet kubeadm kubectl
 
+# Reset previous install
 kubeadm reset -f
+rm -f /etc/cni/net.d/05-cilium.conflist
+rm -f /etc/cni/net.d/.kubernetes-cni-keep
+iptables -F && iptables -t nat -F && iptables -t mangle -F && iptables -X
+
+# Reset configs and restart services
 containerd config default | sed -E 's/SystemdCgroup = false/SystemdCgroup = true/; s%sandbox_image = ".*"%sandbox_image = "registry.k8s.io/pause:3.10"%' > /etc/containerd/config.toml
 systemctl restart containerd
 systemctl enable kubelet
 systemctl restart kubelet
 
-# start cluster
+# Init cluster
 kubeadm init --pod-network-cidr=10.244.0.0/16 --apiserver-advertise-address=$VPS_IP
+
+# allow master to run pods
+kubectl taint nodes --all "node-role.kubernetes.io/control-plane:NoSchedule-"
 
 # setup kubectl
 mkdir -p $HOME/.kube
@@ -74,9 +83,6 @@ chown $(id -u):$(id -g) $HOME/.kube/config
 # install networking model
 helm repo add cilium https://helm.cilium.io/
 helm install cilium cilium/cilium --version ${CILIUM_VERSION} --namespace kube-system
-
-# allow master to run pods
-kubectl taint nodes --all "node-role.kubernetes.io/control-plane:NoSchedule-"
 
 # install ingress
 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
