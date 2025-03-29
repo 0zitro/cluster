@@ -55,6 +55,7 @@ rm -rf /etc/cni/net.d
 iptables -F && iptables -t nat -F && iptables -t mangle -F && iptables -X
 
 # Reset configs and restart services
+mkdir -p /etc/containerd
 containerd config default | sed -E 's/SystemdCgroup = false/SystemdCgroup = true/; s%sandbox_image = ".*"%sandbox_image = "registry.k8s.io/pause:3.10"%' > /etc/containerd/config.toml
 systemctl restart containerd
 systemctl enable kubelet
