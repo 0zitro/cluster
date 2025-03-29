@@ -2,11 +2,24 @@
 
 VPS_IP=$(curl -4 ifconfig.me)
 K8S_VERSION="1.32"
-CILIUM_VERSION="1.17.2"
+# CILIUM_VERSION="1.17.2"
 CERTMANAGER_VERSION="1.17.1"
+
+# Disable swap
+swapoff -a
+sed -i '/ swap / s/^/#/' /etc/fstab
+
+# Add required modules, persist them in modules-load.d
+echo "overlay" > /etc/modules-load.d/k8s-modules.conf
+echo "br_netfilter" >> /etc/modules-load.d/k8s-modules.conf
+
+modprobe overlay
+modprobe br_netfilter
 
 # sysctl params required by setup, params persist across reboots
 echo "net.ipv4.ip_forward = 1" > /etc/sysctl.d/30-ip-forwarding.conf
+echo "net.bridge.bridge-nf-call-ip6tables = 1" >> /etc/sysctl.d/30-ip-forwarding.conf
+echo "net.bridge.bridge-nf-call-iptables = 1" >> /etc/sysctl.d/30-ip-forwarding.conf
 # Apply sysctl params without reboot
 sysctl --system
 
@@ -40,26 +53,26 @@ echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring_v${K8S_VERSION}.gp
 echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/helm.gpg] https://baltocdn.com/helm/stable/debian/ all main" > /etc/apt/sources.list.d/helm-stable-debian.list
 
 # use systemd for the management of the container’s cgroups
-mkdir -p /etc/docker
-cat <<EOF | sudo tee /etc/docker/daemon.json
-{
-  "exec-opts": ["native.cgroupdriver=systemd"],
-  "log-driver": "json-file",
-  "log-opts": {
-    "max-size": "100m"
-  },
-  "storage-driver": "overlay2"
-}
-EOF
+# mkdir -p /etc/docker
+# cat <<EOF | sudo tee /etc/docker/daemon.json
+# {
+#   "exec-opts": ["native.cgroupdriver=systemd"],
+#   "log-driver": "json-file",
+#   "log-opts": {
+#     "max-size": "100m"
+#   },
+#   "storage-driver": "overlay2"
+# }
+# EOF
 
 # install tools
 apt-get -y update
-apt install -y --allow-change-held-packages docker-ce kubeadm kubectl kubelet kubernetes-cni helm
+apt install -y --allow-change-held-packages containerd kubeadm kubectl kubelet kubernetes-cni helm
 apt-mark hold kubelet kubeadm kubectl
 
 # Reset previous install
 kubeadm reset -f
-rm -f /etc/cni/net.d/05-cilium.conflist
+# rm -f /etc/cni/net.d/05-cilium.conflist
 rm -f /etc/cni/net.d/.kubernetes-cni-keep
 iptables -F && iptables -t nat -F && iptables -t mangle -F && iptables -X
 
@@ -73,28 +86,36 @@ systemctl restart kubelet
 kubeadm init --pod-network-cidr=10.244.0.0/16 --apiserver-advertise-address=$VPS_IP
 
 # allow master to run pods
-kubectl taint nodes --all "node-role.kubernetes.io/control-plane:NoSchedule-"
+kubectl taint nodes --all "node-role.kubernetes.io/control-plane:NoSchedule-" || true
 
 # setup kubectl
 mkdir -p $HOME/.kube
 cp /etc/kubernetes/admin.conf $HOME/.kube/config
 chown $(id -u):$(id -g) $HOME/.kube/config
 
-# install networking model
-helm repo add cilium https://helm.cilium.io/
-helm install cilium cilium/cilium --version ${CILIUM_VERSION} --namespace kube-system
+# # install networking model
+# helm repo add cilium https://helm.cilium.io/
+# helm install cilium cilium/cilium --version ${CILIUM_VERSION} --namespace kube-system
+# Use calico
+kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.3/manifests/calico.yaml
 
 # install ingress
 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
-helm install ingress-nginx ingress-nginx/ingress-nginx
-kubectl patch svc ingress-nginx-controller -p "{\"spec\": {\"type\": \"LoadBalancer\", \"externalIPs\":[\"${VPS_IP}\"]}}"
+# helm install ingress-nginx ingress-nginx/ingress-nginx
+# kubectl patch svc ingress-nginx-controller -p "{\"spec\": {\"type\": \"LoadBalancer\", \"externalIPs\":[\"${VPS_IP}\"]}}"
 
-# install certificate manager
-helm repo add jetstack https://charts.jetstack.io
-helm repo update
-helm install \
-  cert-manager jetstack/cert-manager \
-  --namespace cert-manager \
-  --create-namespace \
-  --version v${CERTMANAGER_VERSION} \
-  --set installCRDs=true
+helm install nginx-ingress ingress-nginx/ingress-nginx \
+  --namespace ingress-nginx --create-namespace \
+  --set controller.hostNetwork=true \
+  --set controller.kind=DaemonSet \
+  --set controller.service.type=ClusterIP
+
+# # install certificate manager
+# helm repo add jetstack https://charts.jetstack.io
+# helm repo update
+# helm install \
+#   cert-manager jetstack/cert-manager \
+#   --namespace cert-manager \
+#   --create-namespace \
+#   --version v${CERTMANAGER_VERSION} \
+#   --set installCRDs=true
