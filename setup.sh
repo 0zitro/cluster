@@ -63,6 +63,7 @@ systemctl restart kubelet
 
 # Init cluster
 kubeadm init --pod-network-cidr=10.244.0.0/16 --apiserver-advertise-address=$VPS_IP
+export KUBECONFIG=/etc/kubernetes/admin.conf
 
 # allow master to run pods
 kubectl taint nodes --all "node-role.kubernetes.io/control-plane:NoSchedule-" || true
