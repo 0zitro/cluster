@@ -5,6 +5,9 @@ K8S_VERSION="1.32"
 CALICO_VERSION="3.29.3"
 CERTMANAGER_VERSION="1.17.1"
 
+# Disable apparmor
+systemctl stop apparmor
+systemctl disable apparmor
 
 # Disable swap
 swapoff -a
